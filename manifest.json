@@ -1,9 +1,0 @@
-{
-  "name": "podmishka1337 Game",
-  "short_name": "Snake",
-  "start_url": "./index.html",
-  "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#ffffff",
-  "orientation": "portrait"
-}

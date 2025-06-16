@@ -2,26 +2,18 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <title>Змейка</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="style.css" />
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <!-- Telegram Mini App -->
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#ffffff">
-  <link rel="manifest" href="manifest.json">
-
-  <!-- Иконка -->
-  <link rel="icon" href="assets/icon-192.png" type="image/png">
+  <title>Змейка</title>
+  <link rel="icon" href="assets/HEAD.png" type="image/png">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
   <div id="menu">
-    <h1>Змейка</h1>
     <button id="playBtn">PLAY</button>
   </div>
-
-  <canvas id="gameCanvas" width="320" height="640"></canvas>
-
-  <script src="snake.js"></script>
+  <canvas id="gameCanvas" width="512" height="512"></canvas>
+  <script src="script.js"></script>
 </body>
 </html>
