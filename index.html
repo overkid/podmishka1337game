@@ -1,19 +1,319 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#ffffff">
-  <title>Змейка</title>
-  <link rel="icon" href="assets/HEAD.png" type="image/png">
-  <link rel="stylesheet" href="style.css">
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+  <title>Snake Duel v2</title>
+  <style>
+    * { box-sizing: border-box; margin:0; padding:0 }
+    body {
+      font-family: sans-serif;
+      background: #eefdfb;
+      color: #333;
+      text-align: center;
+      height: 100vh;
+      display: flex; flex-direction: column;
+    }
+    #mobile-only { display: none; }
+    #game { flex:1; display:none; flex-direction:column; }
+
+    .status {
+      display:flex; justify-content:space-between;
+      padding:10px 20px;
+    }
+    .bar-wrap { width:45%; text-align:left; }
+    .bar-wrap div { margin-bottom:4px; }
+    .bar {
+      width:100%; height:10px; background:#ddd; border-radius:5px;
+      overflow:hidden;
+    }
+    .fill {
+      height:100%; background:#a2f5de; transition:width .4s;
+    }
+    .energy {
+      height:6px; background:#76e0c1;
+    }
+
+    #field {
+      position:relative; flex:1; margin:10px 0;
+    }
+    .card-played {
+      position:absolute; width:100px; height:160px;
+      background:#a2f5de; border-radius:8px;
+      display:flex; align-items:center; justify-content:center;
+      font-size:12px; opacity:0; transform:translateX(-50%) scale(.8);
+      transition:opacity .3s, transform .3s;
+      user-select:none;
+    }
+    .card-played.show { opacity:1; transform:translateX(-50%) scale(1); }
+    .player { bottom:20px; left:50%; }
+    .enemy  { top:20px;   left:50%; }
+
+    #hand {
+      display:flex; justify-content:center; gap:8px;
+      padding:10px;
+    }
+    .card {
+      width:120px; height:240px;
+      background:#a2f5de; border-radius:6px;
+      display:flex; align-items:center; justify-content:center;
+      font-size:11px; cursor:pointer; user-select:none;
+      position:relative;
+    }
+    .card.disabled {
+      opacity:.4; pointer-events:none;
+    }
+    .cost {
+      position:absolute; top:4px; right:6px;
+      font-size:10px; color:#444;
+    }
+    @keyframes shake {
+      0% { transform: translateX(0) }
+      25% { transform: translateX(-5px) }
+      50% { transform: translateX(5px) }
+      75% { transform: translateX(-5px) }
+      100% { transform: translateX(0) }
+    }
+    .shake { animation: shake .4s ease-in-out }
+  </style>
 </head>
 <body>
-  <div id="menu">
-    <button id="playBtn">PLAY</button>
+
+  <div id="mobile-only">
+    <h2>Пожалуйста, открой на телефоне 📱</h2>
   </div>
-  <canvas id="gameCanvas" width="512" height="512"></canvas>
-  <script src="script.js"></script>
+
+  <div id="game">
+    <div class="status">
+      <div class="bar-wrap">
+        <div>🐍 Бот HP</div>
+        <div class="bar"><div id="bot-hp" class="fill"></div></div>
+        <div>🔋 <span id="bot-energy-text">0</span>/3</div>
+        <div class="bar"><div id="bot-energy" class="energy"></div></div>
+      </div>
+      <div class="bar-wrap">
+        <div>🙂 Ты HP</div>
+        <div class="bar"><div id="player-hp" class="fill"></div></div>
+        <div>🔋 <span id="player-energy-text">0</span>/3</div>
+        <div class="bar"><div id="player-energy" class="energy"></div></div>
+      </div>
+    </div>
+
+    <div id="field"></div>
+    <div id="hand"></div>
+  </div>
+
+  <script>
+  // 1. Проверяем мобильный
+  if (window.innerWidth > 800) {
+    document.getElementById('mobile-only').style.display = 'block';
+    throw '';
+  } else {
+    document.getElementById('game').style.display = 'flex';
+  }
+
+  // 2. Настройки
+  const MAX_HP = 20, MAX_ENERGY = 3, HAND_SIZE = 3;
+  const baseCards = [
+    { name:'Змеиный укус', cost:3, type:'attack',  value:5, maxUses:3 },
+    { name:'Быстрый укус', cost:1, type:'attack',  value:2, maxUses:5 },
+    { name:'Колючий щит', cost:1, type:'defense', value:2, maxUses:5 },
+    { name:'Защитная чешуя', cost:2,type:'defense', value:4, maxUses:3 },
+    { name:'Яд плевок', cost:2, type:'attack',  value:3, maxUses:2 }
+  ];
+
+  // Состояния
+  const player = { hp:MAX_HP, energy:MAX_ENERGY, deck:[], discard:[], hand:[] };
+  const bot    = { hp:MAX_HP, energy:MAX_ENERGY, deck:[], discard:[], hand:[] };
+
+  // UI элементы
+  const ui = {
+    pHp: document.getElementById('player-hp'),
+    bHp: document.getElementById('bot-hp'),
+    pEText:document.getElementById('player-energy-text'),
+    bEText:document.getElementById('bot-energy-text'),
+    pE: document.getElementById('player-energy'),
+    bE: document.getElementById('bot-energy'),
+    hand: document.getElementById('hand'),
+    field: document.getElementById('field')
+  };
+
+  // Helpers
+  function shuffle(a) {
+    for (let i=a.length-1; i>0; i--) {
+      let j=Math.floor(Math.random()*(i+1));
+      [a[i],a[j]]=[a[j],a[i]];
+    }
+  }
+  function buildDeck(state) {
+    state.deck = [];
+    baseCards.forEach(c=>{
+      for(let i=0;i<c.maxUses;i++){
+        state.deck.push(Object.assign({},c));
+      }
+    });
+    shuffle(state.deck);
+  }
+  function drawHand(state, uiState) {
+    state.hand = [];
+    while(state.hand.length < HAND_SIZE && state.deck.length) {
+      state.hand.push(state.deck.pop());
+    }
+    if (state.hand.length < HAND_SIZE) {
+      // тасуем сброс в колоду
+      state.deck = state.discard;
+      state.discard = [];
+      shuffle(state.deck);
+      while(state.hand.length < HAND_SIZE && state.deck.length) {
+        state.hand.push(state.deck.pop());
+      }
+    }
+  }
+  function updateBars() {
+    ui.pHp.style.width = (player.hp / MAX_HP * 100) + '%';
+    ui.bHp.style.width = (bot.hp    / MAX_HP * 100) + '%';
+    ui.pEText.innerText = player.energy;
+    ui.bEText.innerText = bot.energy;
+    ui.pE.style.width = (player.energy / MAX_ENERGY * 100) + '%';
+    ui.bE.style.width = (bot.energy    / MAX_ENERGY * 100) + '%';
+  }
+
+  // Отрисовка руки
+  function renderHand() {
+    ui.hand.innerHTML = '';
+    player.hand.forEach((card, idx) => {
+      const el = document.createElement('div');
+      el.className = 'card';
+      el.innerText = card.name;
+      const cost = document.createElement('div');
+      cost.className = 'cost';
+      cost.innerText = card.cost;
+      el.appendChild(cost);
+      if (card.cost > player.energy) el.classList.add('disabled');
+      el.onclick = () => playCard(card, idx);
+      ui.hand.appendChild(el);
+    });
+  }
+
+  // Игровой цикл
+  function startTurn() {
+    // сброс энергии
+    player.energy = bot.energy = MAX_ENERGY;
+    // новые руки
+    drawHand(player); drawHand(bot);
+    renderHand(); updateBars();
+  }
+
+  async function playCard(card, idx) {
+    if (player.energy < card.cost) return;
+    // расход энергии
+    player.energy -= card.cost;
+    updateBars();
+    // анимация вашей карты
+    const el = document.querySelectorAll('#hand .card')[idx];
+    animPlay(el, 'player', card.name);
+    // считаем урон
+    let dmgToBot = card.type==='attack'?card.value:0;
+    let blockToPlayer = card.type==='defense'?card.value:0;
+    // снимаем HP
+    bot.hp = Math.max(0, bot.hp - dmgToBot);
+    updateBars();
+
+    player.discard.push(card);
+    player.hand.splice(idx,1);
+    renderHand();
+
+    await delay(500);
+    // если ещё есть куда ходить — остаёмся, иначе ход бота
+    if (player.energy > 0 && player.hand.some(c=>c.cost<=player.energy)) {
+      return;
+    }
+    await botPhase();
+  }
+
+  async function botPhase() {
+    // бот играет, пока есть энергия и карты
+    while(bot.energy > 0) {
+      // готовим руку у бота
+      if (bot.hand.length===0) {
+        drawHand(bot);
+      }
+      // фильтруем по cost
+      const options = bot.hand.filter(c=>c.cost <= bot.energy);
+      if (!options.length) break;
+      // выбираем по весам
+      const weights = options.map(c=>{
+        let w = 1 + (c.type==='attack'?7:2);
+        if (bot.hp < 6 && c.type==='defense') w += 5;
+        return w;
+      });
+      // шанс фейла
+      let card = Math.random()<0.1
+        ? options[Math.floor(Math.random()*options.length)]
+        : roulette(options, weights);
+
+      bot.energy -= card.cost;
+      updateBars();
+      // анимация карты бота
+      animPlay(null, 'enemy', card.name);
+      // урон
+      let dmgToPlayer = card.type==='attack'?card.value:0;
+      player.hp = Math.max(0, player.hp - dmgToPlayer);
+      updateBars();
+
+      // перемещаем карту в discard
+      bot.discard.push(card);
+      bot.hand.splice(bot.hand.indexOf(card),1);
+
+      await delay(600);
+    }
+    // проверка конца
+    if (player.hp===0 || bot.hp===0) {
+      return setTimeout(()=> {
+        alert(player.hp===0 ? '💀 Ты проиграл' : '🎉 Ты выиграл');
+        // рестарт
+        player.hp = bot.hp = MAX_HP;
+        player.discard = []; bot.discard = [];
+        buildDeck(player); buildDeck(bot);
+        startTurn();
+      }, 200);
+    }
+    // новая фаза
+    await delay(300);
+    startTurn();
+  }
+
+  // Вспомогалки
+  function roulette(items, weights) {
+    const total = weights.reduce((a,b)=>a+b,0);
+    let r = Math.random()*total, s=0;
+    for(let i=0;i<items.length;i++){
+      s+=weights[i];
+      if(r<s) return items[i];
+    }
+    return items[0];
+  }
+  function delay(ms){return new Promise(r=>setTimeout(r,ms))}
+
+  // Анимация выкладки
+  function animPlay(srcEl, cls, text) {
+    const c = document.createElement('div');
+    c.className = `card-played ${cls}`;
+    c.innerText = text;
+    ui.field.appendChild(c);
+    setTimeout(()=> c.classList.add('show'),10);
+    // shake при эффекте
+    setTimeout(()=>{
+      ui.field.classList.add('shake');
+      setTimeout(()=> ui.field.classList.remove('shake'),400);
+    },200);
+    // убрать карту через секунду
+    setTimeout(()=> c.remove(),800);
+  }
+
+  // Стартуем
+  buildDeck(player); buildDeck(bot);
+  startTurn();
+  </script>
 </body>
 </html>
