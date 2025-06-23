@@ -103,6 +103,16 @@
     <div id="hand"></div>
   </div>
 
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+<script>
+  window.addEventListener("DOMContentLoaded", () => {
+    const tg = window.Telegram.WebApp;
+    tg.expand(); // Максимизируем экран
+    tg.ready();  // Обязательно вызывается после всех инициализаций
+  });
+</script>
+
   <script>
   // 1. Проверяем мобильный
   if (window.innerWidth > 800) {
